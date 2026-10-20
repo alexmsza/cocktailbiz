@@ -1,0 +1,204 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  BARTENDER
+  MANAGER
+  ADMIN
+}
+
+enum EntryType {
+  INCOME
+  EXPENSE
+}
+
+enum EventStatus {
+  DRAFT
+  PROPOSAL_SENT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum CourseTrack {
+  BARTENDER_DOSE
+  GENERAL_ENTREPRENEURSHIP
+}
+
+model User {
+  id             String           @id @default(uuid())
+  email          String           @unique
+  name           String
+  phone          String?
+  role           Role             @default(BARTENDER)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  progress       CourseProgress[]
+  auditLogs      AuditLog[]
+
+  @@index([email])
+}
+
+model Organization {
+  id          String           @id @default(uuid())
+  name        String
+  document    String?          // CNPJ ou CPF
+  plan        String           @default("FREE")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  users       User[]
+  ingredients Ingredient[]
+  cocktails   Cocktail[]
+  cashEntries CashbookEntry[]
+  events      EventOrder[]
+  suppliers   Supplier[]
+}
+
+model Ingredient {
+  id             String               @id @default(uuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  category       String               // Destilado, Licor, Fruta, Xarope, Insumo Seco, Embalagem
+  unit           String               // ml, g, unid
+  packageSize    Float                // Ex: 750 (ml), 1000 (g)
+  costPrice      Float                // Custo pago pela embalagem inteira (ex: R$ 42,00)
+  lossPercentage Float                @default(0.0) // Fator de perda / quebra (ex: 5%)
+  costPerUnit    Float                // Custo líquido por ml ou g (calculado)
+  supplierId     String?
+  supplier       Supplier?            @relation(fields: [supplierId], references: [id])
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  cocktails      CocktailIngredient[]
+
+  @@index([organizationId, category])
+}
+
+model Cocktail {
+  id             String               @id @default(uuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  category       String               // Clássico, Autoral, Mocktail, Tropical
+  glassware      String               // Copo Baixo, Taça Coupé, Long Drink
+  iceType        String               // Cubo Grande, Picado, Esfera
+  garnish        String?              // Casca de limão, folha de hortelã
+  prepMethod     String               // Batido, Mexido, Montado
+  prepTimeSec    Int                  @default(120) // Tempo em segundos
+  notes          String?
+  targetMargin   Float                @default(70.0) // Margem bruta alvo (%)
+  sellingPrice   Float                // Preço de venda no cardápio
+  ingredients    CocktailIngredient[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([organizationId, category])
+}
+
+model CocktailIngredient {
+  id           String     @id @default(uuid())
+  cocktailId   String
+  cocktail     Cocktail   @relation(fields: [cocktailId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  quantity     Float      // Quantidade usada na receita (ex: 50 ml, 1 unid)
+
+  @@unique([cocktailId, ingredientId])
+}
+
+model CashbookEntry {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           EntryType
+  category       String       // Insumos, Mão de Obra, Fixos, Marketing, Venda Balcão, Evento
+  description    String
+  amount         Float
+  date           DateTime     @default(now())
+  paymentMethod  String       // PIX, CARTAO, BOLETO, DINHEIRO
+  isReconciled   Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, date])
+}
+
+model EventOrder {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientName     String
+  clientPhone    String?
+  eventDate      DateTime
+  guestCount     Int
+  durationHours  Int          @default(4)
+  drinksPlanned  Int          @default(0)
+  totalBudget    Float
+  depositPaid    Float        @default(0.0)
+  status         EventStatus  @default(DRAFT)
+  pixKey         String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, eventDate])
+}
+
+model Supplier {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  contactName    String?
+  phone          String?
+  email          String?
+  deliveryDays   Int          @default(2) // Prazo de entrega
+  paymentTerms   String?      // 30 dias, à vista, Pix
+  ingredients    Ingredient[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model CourseProgress {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track       CourseTrack @default(BARTENDER_DOSE)
+  moduleId    String
+  lessonId    String
+  completed   Boolean     @default(false)
+  completedAt DateTime?
+  quizScore   Float?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([userId, track, moduleId, lessonId])
+  @@index([userId, track])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  metadata  String?  // JSON sanitizado
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
